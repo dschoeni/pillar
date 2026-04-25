@@ -72,6 +72,12 @@ export function unlog(logId: string) {
   if (idx >= 0) state.logs.splice(idx, 1)
 }
 
+export function updateLog(id: string, patch: Partial<Pick<LogEntry, 'slot' | 'takenAt'>>) {
+  const found = state.logs.find((l) => l.id === id)
+  if (!found) return
+  Object.assign(found, patch)
+}
+
 export function startOfDay(ts: number): number {
   const d = new Date(ts)
   d.setHours(0, 0, 0, 0)
