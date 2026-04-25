@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { state, addSupplement, deleteSupplement } from '../store'
+import { state, addSupplement, updateSupplement, deleteSupplement } from '../store'
 import {
   MEAL_SLOTS,
   MEAL_SLOT_LABEL,
   MEAL_SLOT_ICON,
   FOOD_PREFERENCE_LABEL,
   type MealSlot,
-  type FoodPreference
+  type FoodPreference,
+  type Supplement
 } from '../types'
 
 defineEmits<{ close: [] }>()
 
 const showForm = ref(state.supplements.length === 0)
+const editingId = ref<string | null>(null)
 const name = ref('')
 const selectedSlots = ref<MealSlot[]>(['breakfast'])
 const daysPerWeek = ref(7)
@@ -26,11 +28,22 @@ function toggleSlot(t: MealSlot) {
 }
 
 function reset() {
+  editingId.value = null
   name.value = ''
   selectedSlots.value = ['breakfast']
   daysPerWeek.value = 7
   foodPreference.value = 'none'
   error.value = ''
+}
+
+function startEdit(s: Supplement) {
+  editingId.value = s.id
+  name.value = s.name
+  selectedSlots.value = [...s.slots]
+  daysPerWeek.value = s.daysPerWeek
+  foodPreference.value = s.foodPreference
+  error.value = ''
+  showForm.value = true
 }
 
 function submit() {
@@ -43,12 +56,17 @@ function submit() {
     error.value = 'Pick at least one meal slot'
     return
   }
-  addSupplement({
+  const payload = {
     name: trimmed,
     slots: [...selectedSlots.value],
     daysPerWeek: daysPerWeek.value,
     foodPreference: foodPreference.value
-  })
+  }
+  if (editingId.value) {
+    updateSupplement(editingId.value, payload)
+  } else {
+    addSupplement(payload)
+  }
   reset()
   showForm.value = false
 }
@@ -56,6 +74,10 @@ function submit() {
 function confirmDelete(id: string, supplementName: string) {
   if (confirm(`Delete "${supplementName}"? This will also remove its log history.`)) {
     deleteSupplement(id)
+    if (editingId.value === id) {
+      reset()
+      showForm.value = state.supplements.length === 0
+    }
   }
 }
 
@@ -108,12 +130,21 @@ const FOOD_OPTIONS: FoodPreference[] = ['none', 'with-food', 'empty-stomach']
                 </span>
               </div>
             </div>
-            <button
-              class="text-sm text-red-400 hover:text-red-300 shrink-0"
-              @click="confirmDelete(s.id, s.name)"
-            >
-              Delete
-            </button>
+            <div class="flex flex-col items-end gap-1 shrink-0">
+              <button
+                class="text-sm text-emerald-400 hover:text-emerald-300"
+                :class="editingId === s.id ? 'font-semibold' : ''"
+                @click="startEdit(s)"
+              >
+                {{ editingId === s.id ? 'Editing…' : 'Edit' }}
+              </button>
+              <button
+                class="text-sm text-red-400 hover:text-red-300"
+                @click="confirmDelete(s.id, s.name)"
+              >
+                Delete
+              </button>
+            </div>
           </li>
         </ul>
 
@@ -130,6 +161,9 @@ const FOOD_OPTIONS: FoodPreference[] = ['none', 'with-food', 'empty-stomach']
           class="space-y-4 p-4 rounded-xl bg-slate-800/40 border border-slate-700"
           @submit.prevent="submit"
         >
+          <div class="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            {{ editingId ? 'Edit supplement' : 'New supplement' }}
+          </div>
           <div>
             <label class="block text-xs font-medium text-slate-300 mb-1.5">Name</label>
             <input
@@ -217,7 +251,7 @@ const FOOD_OPTIONS: FoodPreference[] = ['none', 'with-food', 'empty-stomach']
               type="submit"
               class="flex-1 py-2.5 rounded-lg bg-emerald-500 text-slate-950 font-medium hover:bg-emerald-400 active:bg-emerald-600"
             >
-              Add
+              {{ editingId ? 'Save' : 'Add' }}
             </button>
           </div>
         </form>

@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { state, logsForDay, supplementById, dayKey, startOfDay } from '../store'
-import { MEAL_SLOT_LABEL } from '../types'
+import { MEAL_SLOT_LABEL, type LogEntry } from '../types'
+import EditLogSheet from './EditLogSheet.vue'
+
+const editingLog = ref<LogEntry | null>(null)
 
 const today = new Date()
 const viewYear = ref(today.getFullYear())
@@ -181,18 +184,29 @@ const hasLogs = computed(() => state.logs.length > 0)
         Nothing logged on this day.
       </div>
       <ul v-else class="space-y-2">
-        <li
-          v-for="row in selectedDetails"
-          :key="row.logId"
-          class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-slate-800/60 border border-slate-700"
-        >
-          <div>
-            <div class="font-medium">{{ row.name }}</div>
-            <div class="text-xs text-slate-400 mt-0.5">{{ row.slot }}</div>
-          </div>
-          <div class="text-sm text-slate-300 tabular-nums">{{ row.hhmm }}</div>
+        <li v-for="row in selectedDetails" :key="row.logId">
+          <button
+            type="button"
+            class="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-slate-800/60 border border-slate-700 text-left hover:bg-slate-800 active:bg-slate-700 transition-colors"
+            @click="editingLog = state.logs.find((l) => l.id === row.logId) ?? null"
+          >
+            <div>
+              <div class="font-medium">{{ row.name }}</div>
+              <div class="text-xs text-slate-400 mt-0.5">{{ row.slot }}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-slate-300 tabular-nums">{{ row.hhmm }}</span>
+              <span class="text-xs text-emerald-400">Edit</span>
+            </div>
+          </button>
         </li>
       </ul>
     </div>
+
+    <EditLogSheet
+      v-if="editingLog"
+      :log="editingLog"
+      @close="editingLog = null"
+    />
   </div>
 </template>
