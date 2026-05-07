@@ -12,10 +12,9 @@ import {
   type Supplement
 } from '../types'
 import {
-  notificationsSupported,
   permission,
-  requestPermission,
-  triggersSupported
+  remindersSupported,
+  requestPermission
 } from '../notifications'
 
 defineEmits<{ close: [] }>()
@@ -29,13 +28,12 @@ const foodPreference = ref<FoodPreference>('none')
 const reminders = ref<Reminder[]>([])
 const error = ref('')
 
-const notifSupported = notificationsSupported()
-const triggersOk = triggersSupported()
-const permState = ref<NotificationPermission>(notifSupported ? permission() : 'denied')
+const remindersOk = remindersSupported()
+const permState = ref<NotificationPermission>(remindersOk ? permission() : 'denied')
 let permPoll: number | null = null
 
 onMounted(() => {
-  if (!notifSupported) return
+  if (!remindersOk) return
   permPoll = window.setInterval(() => {
     permState.value = permission()
   }, 1500)
@@ -152,16 +150,13 @@ const FOOD_OPTIONS: FoodPreference[] = ['none', 'with-food', 'empty-stomach']
 
       <div class="p-5 space-y-5">
         <div
-          v-if="notifSupported && permState !== 'granted'"
+          v-if="remindersOk && permState !== 'granted'"
           class="px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40 flex items-start justify-between gap-3"
         >
           <div class="text-xs text-emerald-100 leading-relaxed">
             <div class="font-medium text-emerald-300">Enable reminders</div>
             <p class="mt-0.5 text-emerald-200/80">
               Allow notifications to get pinged when it's time to take each supplement.
-            </p>
-            <p v-if="!triggersOk" class="mt-1 text-emerald-200/60">
-              Heads-up: this device may only fire reminders while the app is open. For background reminders on Android, install the app and use Chrome.
             </p>
           </div>
           <button
@@ -181,10 +176,10 @@ const FOOD_OPTIONS: FoodPreference[] = ['none', 'with-food', 'empty-stomach']
         </div>
 
         <div
-          v-else-if="!notifSupported"
+          v-else-if="!remindersOk"
           class="px-4 py-3 rounded-xl bg-slate-800/40 border border-slate-700 text-xs text-slate-400"
         >
-          Notifications aren't supported in this browser. Reminders won't fire here.
+          Reminders aren't supported on this device. Install Pillar as a PWA on Android Chrome to enable supplement notifications.
         </div>
 
         <ul v-if="state.supplements.length > 0" class="space-y-2">
@@ -360,7 +355,13 @@ const FOOD_OPTIONS: FoodPreference[] = ['none', 'with-food', 'empty-stomach']
               </li>
             </ul>
             <p
-              v-if="reminders.length > 0 && notifSupported && permState !== 'granted'"
+              v-if="reminders.length > 0 && !remindersOk"
+              class="text-[11px] text-amber-300 mt-2"
+            >
+              Reminders won't fire on this device — install as a PWA on Android Chrome.
+            </p>
+            <p
+              v-else-if="reminders.length > 0 && permState !== 'granted'"
               class="text-[11px] text-amber-300 mt-2"
             >
               Reminders won't fire until you enable notifications above.

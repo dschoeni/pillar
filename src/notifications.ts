@@ -1,9 +1,8 @@
 import { state } from './store'
-import type { Reminder, Supplement } from './types'
+import type { Supplement } from './types'
 
 const TAG_PREFIX = 'pillar-reminder:'
 const SCHEDULE_HORIZON_DAYS = 7
-const FOREGROUND_TICK_MS = 30_000
 
 export function notificationsSupported(): boolean {
   return typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator
@@ -16,6 +15,10 @@ export function permission(): NotificationPermission {
 
 export function triggersSupported(): boolean {
   return notificationsSupported() && typeof (window as unknown as { TimestampTrigger?: unknown }).TimestampTrigger !== 'undefined'
+}
+
+export function remindersSupported(): boolean {
+  return triggersSupported()
 }
 
 export async function requestPermission(): Promise<NotificationPermission> {
@@ -78,12 +81,12 @@ async function clearScheduled(reg: ServiceWorkerRegistration): Promise<void> {
 let isRescheduling = false
 
 export async function rescheduleAll(): Promise<void> {
-  if (!notificationsSupported() || permission() !== 'granted') return
+  if (!remindersSupported() || permission() !== 'granted') return
   if (isRescheduling) return
   isRescheduling = true
   try {
     const reg = await getRegistration()
-    if (!reg || !triggersSupported()) return
+    if (!reg) return
 
     await clearScheduled(reg)
 
@@ -105,7 +108,7 @@ export async function rescheduleAll(): Promise<void> {
           try {
             await reg.showNotification(`Time to take ${s.name}`, options as NotificationOptions)
           } catch {
-            // Skip individual failures to avoid blocking others
+            // skip individual failures
           }
         }
       }
@@ -115,84 +118,7 @@ export async function rescheduleAll(): Promise<void> {
   }
 }
 
-interface PendingForeground {
-  timeoutId: number
-  fireAt: number
-  key: string
-}
-
-const foregroundTimers = new Map<string, PendingForeground>()
-let foregroundTickHandle: number | null = null
-
-function foregroundKey(supplementId: string, reminderId: string, ts: number): string {
-  return `${supplementId}:${reminderId}:${ts}`
-}
-
-function clearForegroundTimers(): void {
-  for (const t of foregroundTimers.values()) clearTimeout(t.timeoutId)
-  foregroundTimers.clear()
-}
-
-async function fireForeground(s: Supplement, _r: Reminder): Promise<void> {
-  if (permission() !== 'granted') return
-  const reg = await getRegistration()
-  const title = `Time to take ${s.name}`
-  const body = bodyFor(s)
-  if (reg) {
-    try {
-      await reg.showNotification(title, { body, icon: 'icon-192.svg', badge: 'icon-192.svg' })
-      return
-    } catch {
-      // fall through
-    }
-  }
-  try {
-    new Notification(title, { body, icon: 'icon-192.svg' })
-  } catch {
-    // ignore
-  }
-}
-
-function scheduleForegroundTimers(): void {
-  if (!notificationsSupported() || permission() !== 'granted') return
-  if (triggersSupported()) return
-
-  clearForegroundTimers()
-  const horizonMs = 24 * 60 * 60 * 1000
-  const now = Date.now()
-
-  for (const s of state.supplements) {
-    const reminders = s.reminders ?? []
-    for (const r of reminders) {
-      const occurrences = nextOccurrences(r.time, 2)
-      for (const ts of occurrences) {
-        if (ts - now > horizonMs) continue
-        const delay = Math.max(0, ts - now)
-        const key = foregroundKey(s.id, r.id, ts)
-        const timeoutId = window.setTimeout(() => {
-          foregroundTimers.delete(key)
-          void fireForeground(s, r)
-        }, delay)
-        foregroundTimers.set(key, { timeoutId, fireAt: ts, key })
-      }
-    }
-  }
-}
-
-export function startForegroundScheduler(): void {
-  scheduleForegroundTimers()
-  if (foregroundTickHandle !== null) return
-  foregroundTickHandle = window.setInterval(() => {
-    scheduleForegroundTimers()
-  }, FOREGROUND_TICK_MS)
-}
-
 export async function ensureScheduled(): Promise<void> {
-  if (!notificationsSupported()) return
-  if (permission() !== 'granted') return
-  if (triggersSupported()) {
-    await rescheduleAll()
-  } else {
-    scheduleForegroundTimers()
-  }
+  if (!remindersSupported() || permission() !== 'granted') return
+  await rescheduleAll()
 }

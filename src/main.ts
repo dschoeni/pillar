@@ -1,12 +1,12 @@
 import { createApp, watch } from 'vue'
 import App from './App.vue'
 import { state } from './store'
-import { ensureScheduled, notificationsSupported, startForegroundScheduler, triggersSupported } from './notifications'
+import { ensureScheduled, remindersSupported } from './notifications'
 import './style.css'
 
 createApp(App).mount('#app')
 
-if (notificationsSupported()) {
+if (remindersSupported()) {
   void ensureScheduled()
 
   let pending: number | null = null
@@ -21,8 +21,6 @@ if (notificationsSupported()) {
     },
     { deep: true }
   )
-
-  if (!triggersSupported()) startForegroundScheduler()
 
   window.setInterval(() => {
     void ensureScheduled()
