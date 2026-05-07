@@ -38,7 +38,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-        navigateFallback: `${base}index.html`
+        navigateFallback: `${base}index.html`,
+        importScripts: ['sw-extras.js']
       }
     })
   ],

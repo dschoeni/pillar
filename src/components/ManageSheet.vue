@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { state, addSupplement, updateSupplement, deleteSupplement } from '../store'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { state, addSupplement, updateSupplement, deleteSupplement, uid } from '../store'
 import {
   MEAL_SLOTS,
   MEAL_SLOT_LABEL,
@@ -8,8 +8,14 @@ import {
   FOOD_PREFERENCE_LABEL,
   type MealSlot,
   type FoodPreference,
+  type Reminder,
   type Supplement
 } from '../types'
+import {
+  permission,
+  remindersSupported,
+  requestPermission
+} from '../notifications'
 
 defineEmits<{ close: [] }>()
 
@@ -19,12 +25,41 @@ const name = ref('')
 const selectedSlots = ref<MealSlot[]>(['breakfast'])
 const daysPerWeek = ref(7)
 const foodPreference = ref<FoodPreference>('none')
+const reminders = ref<Reminder[]>([])
 const error = ref('')
+
+const remindersOk = remindersSupported()
+const permState = ref<NotificationPermission>(remindersOk ? permission() : 'denied')
+let permPoll: number | null = null
+
+onMounted(() => {
+  if (!remindersOk) return
+  permPoll = window.setInterval(() => {
+    permState.value = permission()
+  }, 1500)
+})
+
+onUnmounted(() => {
+  if (permPoll !== null) clearInterval(permPoll)
+})
+
+async function enableNotifications() {
+  permState.value = await requestPermission()
+}
 
 function toggleSlot(t: MealSlot) {
   const idx = selectedSlots.value.indexOf(t)
   if (idx >= 0) selectedSlots.value.splice(idx, 1)
   else selectedSlots.value.push(t)
+}
+
+function addReminder() {
+  reminders.value.push({ id: uid(), time: '09:00' })
+}
+
+function removeReminder(id: string) {
+  const idx = reminders.value.findIndex((r) => r.id === id)
+  if (idx >= 0) reminders.value.splice(idx, 1)
 }
 
 function reset() {
@@ -33,6 +68,7 @@ function reset() {
   selectedSlots.value = ['breakfast']
   daysPerWeek.value = 7
   foodPreference.value = 'none'
+  reminders.value = []
   error.value = ''
 }
 
@@ -42,6 +78,7 @@ function startEdit(s: Supplement) {
   selectedSlots.value = [...s.slots]
   daysPerWeek.value = s.daysPerWeek
   foodPreference.value = s.foodPreference
+  reminders.value = (s.reminders ?? []).map((r) => ({ ...r }))
   error.value = ''
   showForm.value = true
 }
@@ -56,11 +93,15 @@ function submit() {
     error.value = 'Pick at least one meal slot'
     return
   }
+  const cleanedReminders = reminders.value
+    .filter((r) => /^\d{2}:\d{2}$/.test(r.time))
+    .map((r) => ({ id: r.id, time: r.time }))
   const payload = {
     name: trimmed,
     slots: [...selectedSlots.value],
     daysPerWeek: daysPerWeek.value,
-    foodPreference: foodPreference.value
+    foodPreference: foodPreference.value,
+    reminders: cleanedReminders
   }
   if (editingId.value) {
     updateSupplement(editingId.value, payload)
@@ -79,6 +120,10 @@ function confirmDelete(id: string, supplementName: string) {
       showForm.value = state.supplements.length === 0
     }
   }
+}
+
+function formatReminderList(list: Reminder[]): string {
+  return list.map((r) => r.time).sort().join(' · ')
 }
 
 const FOOD_OPTIONS: FoodPreference[] = ['none', 'with-food', 'empty-stomach']
@@ -104,6 +149,39 @@ const FOOD_OPTIONS: FoodPreference[] = ['none', 'with-food', 'empty-stomach']
       </header>
 
       <div class="p-5 space-y-5">
+        <div
+          v-if="remindersOk && permState !== 'granted'"
+          class="px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40 flex items-start justify-between gap-3"
+        >
+          <div class="text-xs text-emerald-100 leading-relaxed">
+            <div class="font-medium text-emerald-300">Enable reminders</div>
+            <p class="mt-0.5 text-emerald-200/80">
+              Allow notifications to get pinged when it's time to take each supplement.
+            </p>
+          </div>
+          <button
+            v-if="permState === 'default'"
+            class="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-500 text-slate-950 text-xs font-medium hover:bg-emerald-400"
+            @click="enableNotifications"
+          >
+            Enable
+          </button>
+          <span
+            v-else
+            class="shrink-0 text-xs text-amber-300"
+            title="Re-enable in your browser site settings"
+          >
+            Blocked
+          </span>
+        </div>
+
+        <div
+          v-else-if="!remindersOk"
+          class="px-4 py-3 rounded-xl bg-slate-800/40 border border-slate-700 text-xs text-slate-400"
+        >
+          Reminders aren't supported on this device. Install Pillar as a PWA on Android Chrome to enable supplement notifications.
+        </div>
+
         <ul v-if="state.supplements.length > 0" class="space-y-2">
           <li
             v-for="s in state.supplements"
@@ -128,6 +206,12 @@ const FOOD_OPTIONS: FoodPreference[] = ['none', 'with-food', 'empty-stomach']
                 >
                   ∅ empty stomach
                 </span>
+              </div>
+              <div
+                v-if="(s.reminders ?? []).length > 0"
+                class="text-xs mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300"
+              >
+                🔔 {{ formatReminderList(s.reminders) }}
               </div>
             </div>
             <div class="flex flex-col items-end gap-1 shrink-0">
@@ -230,6 +314,58 @@ const FOOD_OPTIONS: FoodPreference[] = ['none', 'with-food', 'empty-stomach']
                 {{ FOOD_PREFERENCE_LABEL[opt] }}
               </button>
             </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-medium text-slate-300">Reminders</label>
+              <button
+                type="button"
+                class="text-xs text-emerald-400 hover:text-emerald-300"
+                @click="addReminder"
+              >
+                + Add time
+              </button>
+            </div>
+            <p
+              v-if="reminders.length === 0"
+              class="text-xs text-slate-500"
+            >
+              No reminders. Add a time to get a daily push notification.
+            </p>
+            <ul v-else class="space-y-2">
+              <li
+                v-for="r in reminders"
+                :key="r.id"
+                class="flex items-center gap-2"
+              >
+                <input
+                  v-model="r.time"
+                  type="time"
+                  class="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 focus:border-emerald-500 focus:outline-none text-sm"
+                />
+                <button
+                  type="button"
+                  class="px-2 py-2 rounded-lg text-red-400 hover:text-red-300 text-sm"
+                  @click="removeReminder(r.id)"
+                  aria-label="Remove reminder"
+                >
+                  Remove
+                </button>
+              </li>
+            </ul>
+            <p
+              v-if="reminders.length > 0 && !remindersOk"
+              class="text-[11px] text-amber-300 mt-2"
+            >
+              Reminders won't fire on this device — install as a PWA on Android Chrome.
+            </p>
+            <p
+              v-else-if="reminders.length > 0 && permState !== 'granted'"
+              class="text-[11px] text-amber-300 mt-2"
+            >
+              Reminders won't fire until you enable notifications above.
+            </p>
           </div>
 
           <p v-if="error" class="text-sm text-red-400">{{ error }}</p>
