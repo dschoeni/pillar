@@ -26,12 +26,18 @@ export const FOOD_PREFERENCE_LABEL: Record<FoodPreference, string> = {
   'empty-stomach': 'Empty stomach'
 }
 
+export interface Reminder {
+  id: string
+  time: string
+}
+
 export interface Supplement {
   id: string
   name: string
   slots: MealSlot[]
   daysPerWeek: number
   foodPreference: FoodPreference
+  reminders: Reminder[]
   createdAt: number
 }
 

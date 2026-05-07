@@ -14,13 +14,17 @@ function load(): State {
     if (!raw) return { supplements: [], logs: [] }
     const parsed = JSON.parse(raw) as Partial<State>
     return {
-      supplements: parsed.supplements ?? [],
+      supplements: (parsed.supplements ?? []).map((s) => ({
+        ...s,
+        reminders: s.reminders ?? []
+      })),
       logs: parsed.logs ?? []
     }
   } catch {
     return { supplements: [], logs: [] }
   }
 }
+
 
 export const state = reactive<State>(load())
 
@@ -32,7 +36,7 @@ watch(
   { deep: true }
 )
 
-function uid() {
+export function uid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 }
 
